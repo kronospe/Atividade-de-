@@ -1,0 +1,23 @@
+1. Identificar Smells:
+
+Uma classe que faz tudo : A class GerenciarPedidos faz tudo ela gerencia estoque, calcula descontos, fretes, processa os pagamentos, além de formatar mensagens de email e gerar relatórios csv.
+
+Método Longo: Como a classe faz tudo dificulta restaurar o SCR(Single Responsibility Principle) e OCP(Open/Closed Principle)
+
+Duplicação do Código: Na função processar pedido e no calcular orçamento o método de desconto é o mesmo para as duas funções 
+
+Muitos tipo primitivos: O sistema salva self.itens como sublistas o que causa constante conversão ao longo de código
+
+Os dados estão bagunçados nas funções: O código mistura entidades como Cliente endereço e pagamento em uma entidade única 
+
+O código não usa constantes para valores fixos: Por os valores dos frete como constantes facilitaria no escopo global o uso deles no código inteiro.
+
+Sequencia ideal de mudanças:
+
+Primeiro Commit: Criar uma Classe de domínio e eliminar Primitive Obsession
+
+Segundo Commit: Separar as funções que calculam frete desconto e pagamento
+
+Terceiro commit: Encapsular os dados soltos dos clientes e endereços dos mesmos
+
+Quarto commit: Separar a parte de relatórios impressões e CSV da classe principal

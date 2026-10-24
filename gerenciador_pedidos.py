@@ -7,10 +7,56 @@ class ItemPedido:
     def subtotal(self) -> float:
         return self.quantidade * self.preco
 
-class GerenciadorPedidos:
+class CalculadoraDesconto:
+    @staticmethod
+    def calcular(subtotal: float, tipo_cliente: str) -> float:
+        if tipo_cliente == "COMUM":
+            return subtotal * 0.05 if subtotal > 500 else 0.0
+        elif tipo_cliente == "VIP":
+            return subtotal * 0.15 if subtotal > 500 else subtotal * 0.10
+        elif tipo_cliente == "FUNCIONARIO":
+            return subtotal * 0.20
+        return -1.0  # Código de tipo de cliente desconhecido
 
+
+class CalculadoraFrete:
+    ESTADOS_NE = {"PB", "AL", "RN", "BA", "SE", "CE", "PI", "MA"}
+
+    @classmethod
+    def calcular(cls, uf: str, subtotal_com_desconto: float, tipo_cliente: str) -> float:
+        if subtotal_com_desconto > 300 or tipo_cliente == "VIP":
+            return 0.0
+        if uf == "PE":
+            return 12.50
+        elif uf in cls.ESTADOS_NE:
+            return 22.90
+        return 39.90
+
+
+class CalculadoraPagamento:
+    @staticmethod
+    def aplicar(total: float, pagamento: str, parcelas: int):
+        if pagamento == "PIX":
+            return total * 0.95
+        elif pagamento == "BOLETO":
+            return total + 2.5
+        elif pagamento == "CARTAO":
+            if parcelas < 1 or parcelas > 12:
+                return None
+            if parcelas > 3:
+                return total * (1 + 0.0199 * parcelas)
+            return total
+        return None
+
+class GerenciadorPedidos:
+    def __init__(self):
+        self.itens = []
+        self.estoque = {"CANETA": 100, "CADERNO": 50, "MOCHILA": 10, "CALCULADORA": 5}
+        self.historico = []
+        self.total_vendido = 0
+        
     def adicionar_item(self, produto, qtd, preco):
-        self.itens.append([produto, str(qtd), str(preco)])
+        self.itens.append(ItemPedido(produto, qtd, preco))
 
     def processar_pedido(self, nome, email, tipo_cliente, pagamento, parcelas,
                          rua, numero, cidade, uf, cep):
@@ -22,106 +68,59 @@ class GerenciadorPedidos:
             return "ERRO: pedido vazio"
         if cep is None or len(cep.replace("-", "")) != 8:
             return "ERRO: cep invalido"
-        for item in self.itens:
-            if item[0] not in self.estoque:
-                return "ERRO: produto inexistente " + item[0]
-            if self.estoque[item[0]] < int(item[1]):
-                return "ERRO: estoque insuficiente " + item[0]
 
-        subtotal = 0
         for item in self.itens:
-            subtotal += int(item[1]) * float(item[2])
+            if item.produto not in self.estoque:
+                return f"ERRO: produto inexistente {item.produto}"
+            if self.estoque[item.produto] < item.quantidade:
+                return f"ERRO: estoque insuficiente {item.produto}"
 
-        desconto = 0
-        if tipo_cliente == "COMUM":
-            if subtotal > 500:
-                desconto = subtotal * 0.05
-        elif tipo_cliente == "VIP":
-            if subtotal > 500:
-                desconto = subtotal * 0.15
-            else:
-                desconto = subtotal * 0.10
-        elif tipo_cliente == "FUNCIONARIO":
-            desconto = subtotal * 0.20
-        else:
+        subtotal = sum(item.subtotal() for item in self.itens)
+        desconto = CalculadoraDesconto.calcular(subtotal, tipo_cliente)
+        if desconto < 0:
             return "ERRO: tipo de cliente desconhecido"
 
-        frete = 0
-        if uf == "PE":
-            frete = 12.5
-        elif (uf == "PB" or uf == "AL" or uf == "RN" or uf == "BA"
-              or uf == "SE" or uf == "CE" or uf == "PI" or uf == "MA"):
-            frete = 22.9
-        else:
-            frete = 39.9
-        if subtotal - desconto > 300 or tipo_cliente == "VIP":
-            frete = 0
+        frete = CalculadoraFrete.calcular(uf, subtotal - desconto, tipo_cliente)
+        total_parcial = subtotal - desconto + frete
 
-        total = subtotal - desconto + frete
-        if pagamento == "PIX":
-            total = total * 0.95
-        elif pagamento == "BOLETO":
-            total = total + 2.5
-        elif pagamento == "CARTAO":
-            if parcelas < 1 or parcelas > 12:
+        total = CalculadoraPagamento.aplicar(total_parcial, pagamento, parcelas)
+        if total is None:
+            if pagamento == "CARTAO":
                 return "ERRO: parcelas invalidas"
-            if parcelas > 3:
-                total = total * (1 + 0.0199 * parcelas)
-        else:
             return "ERRO: forma de pagamento invalida"
+
         total = round(total * 100.0) / 100.0
 
         for item in self.itens:
-            self.estoque[item[0]] = self.estoque[item[0]] - int(item[1])
+            self.estoque[item.produto] -= item.quantidade
 
-        endereco = rua + ", " + numero + ", " + cidade + "/" + uf + ", CEP " + cep
+        endereco = f"{rua}, {numero}, {cidade}/{uf}, CEP {cep}"
 
         try:
-            f = open("pedidos.csv", "a", encoding="utf-8")
-            f.write(nome + ";" + email + ";" + tipo_cliente + ";" + pagamento + ";"
-                    + str(total) + ";" + endereco + "\n")
-            f.close()
+            with open("pedidos.csv", "a", encoding="utf-8") as f:
+                f.write(f"{nome};{email};{tipo_cliente};{pagamento};{total};{endereco}\n")
         except OSError as e:
             print("Falha ao salvar pedido: " + str(e))
 
-        mensagem = "Ola " + nome + ", seu pedido foi confirmado. "
+        mensagem = f"Ola {nome}, seu pedido foi confirmed. "
         if tipo_cliente == "VIP":
-            mensagem += "Obrigado por ser VIP! Frete gratis garantido. "
+            mensagem = f"Ola {nome}, seu pedido foi confirmado. Obrigado por ser VIP! Frete gratis garantido. "
         elif tipo_cliente == "FUNCIONARIO":
-            mensagem += "Desconto de colaborador aplicado. "
-        mensagem += "Total: R$ " + "%.2f" % total + ". Entrega em: " + endereco
-        print("[EMAIL para " + email + "] " + mensagem)
+            mensagem = f"Ola {nome}, seu pedido foi confirmado. Desconto de colaborador aplicado. "
+        mensagem += f"Total: R$ {total:.2f}. Entrega em: {endereco}"
+        print(f"[EMAIL para {email}] {mensagem}")
 
-        self.historico.append(nome + "|" + tipo_cliente + "|" + str(total))
+        self.historico.append(f"{nome}|{tipo_cliente}|{total}")
         self.total_vendido += total
         self.itens.clear()
-        return "OK: " + "%.2f" % total
-
+        return f"OK: {total:.2f}"
+    
     def calcular_orcamento(self, tipo_cliente, uf):
-        subtotal = 0
-        for item in self.itens:
-            subtotal += int(item[1]) * float(item[2])
-        desconto = 0
-        if tipo_cliente == "COMUM":
-            if subtotal > 500:
-                desconto = subtotal * 0.05
-        elif tipo_cliente == "VIP":
-            if subtotal > 500:
-                desconto = subtotal * 0.15
-            else:
-                desconto = subtotal * 0.10
-        elif tipo_cliente == "FUNCIONARIO":
-            desconto = subtotal * 0.2
-        frete = 0
-        if uf == "PE":
-            frete = 12.5
-        elif (uf == "PB" or uf == "AL" or uf == "RN" or uf == "BA"
-              or uf == "SE" or uf == "CE" or uf == "PI"):
-            frete = 22.9
-        else:
-            frete = 39.9
-        if subtotal - desconto > 300 or tipo_cliente == "VIP":
-            frete = 0
+        subtotal = sum(item.subtotal() for item in self.itens)
+        desconto = CalculadoraDesconto.calcular(subtotal, tipo_cliente)
+        if desconto < 0:
+            desconto = 0
+        frete = CalculadoraFrete.calcular(uf, subtotal - desconto, tipo_cliente)
         return round((subtotal - desconto + frete) * 100.0) / 100.0
 
     def gerar_relatorio(self):

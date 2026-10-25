@@ -57,9 +57,19 @@ class GerenciadorPedidos:
         
     def adicionar_item(self, produto, qtd, preco):
         self.itens.append(ItemPedido(produto, qtd, preco))
-
-    def processar_pedido(self, nome, email, tipo_cliente, pagamento, parcelas,
-                         rua, numero, cidade, uf, cep):
+    def processar_pedido(
+        self,
+        nome,
+        email,
+        tipo_cliente,
+        pagamento,
+        parcelas,
+        rua,
+        numero,
+        cidade,
+        uf,
+        cep,
+    ):
         if nome is None or nome.strip() == "":
             return "ERRO: cliente sem nome"
         if email is None or "@" not in email or "." not in email:
@@ -80,10 +90,14 @@ class GerenciadorPedidos:
         if desconto < 0:
             return "ERRO: tipo de cliente desconhecido"
 
-        frete = CalculadoraFrete.calcular(uf, subtotal - desconto, tipo_cliente)
+        frete = CalculadoraFrete.calcular(
+            uf, subtotal - desconto, tipo_cliente
+        )
         total_parcial = subtotal - desconto + frete
 
-        total = CalculadoraPagamento.aplicar(total_parcial, pagamento, parcelas)
+        total = CalculadoraPagamento.aplicar(
+            total_parcial, pagamento, parcelas
+        )
         if total is None:
             if pagamento == "CARTAO":
                 return "ERRO: parcelas invalidas"
@@ -96,19 +110,13 @@ class GerenciadorPedidos:
 
         endereco = f"{rua}, {numero}, {cidade}/{uf}, CEP {cep}"
 
-        try:
-            with open("pedidos.csv", "a", encoding="utf-8") as f:
-                f.write(f"{nome};{email};{tipo_cliente};{pagamento};{total};{endereco}\n")
-        except OSError as e:
-            print("Falha ao salvar pedido: " + str(e))
-
-        mensagem = f"Ola {nome}, seu pedido foi confirmed. "
-        if tipo_cliente == "VIP":
-            mensagem = f"Ola {nome}, seu pedido foi confirmado. Obrigado por ser VIP! Frete gratis garantido. "
-        elif tipo_cliente == "FUNCIONARIO":
-            mensagem = f"Ola {nome}, seu pedido foi confirmado. Desconto de colaborador aplicado. "
-        mensagem += f"Total: R$ {total:.2f}. Entrega em: {endereco}"
-        print(f"[EMAIL para {email}] {mensagem}")
+        # Chamada das novas classes isoladas (SRP/DIP)
+        RepositorioPedidos.salvar_csv(
+            nome, email, tipo_cliente, pagamento, total, endereco
+        )
+        ServicoNotificacao.enviar_confirmacao(
+            nome, email, tipo_cliente, total, endereco
+        )
 
         self.historico.append(f"{nome}|{tipo_cliente}|{total}")
         self.total_vendido += total
@@ -163,3 +171,38 @@ class GerenciadorPedidos:
             return "Lembrete: seu desconto de 20% vale em toda a loja."
         else:
             return ""
+        
+class RepositorioPedidos:
+
+    @staticmethod
+    def salvar_csv(
+        nome: str,
+        email: str,
+        tipo_cliente: str,
+        pagamento: str,
+        total: float,
+        endereco: str,
+    ):
+        try:
+            with open("pedidos.csv", "a", encoding="utf-8") as f:
+                f.write(
+                    f"{nome};{email};{tipo_cliente};{pagamento};{total};{endereco}\n"
+                )
+        except OSError as e:
+            print("Falha ao salvar pedido: " + str(e))
+
+
+class ServicoNotificacao:
+
+    @staticmethod
+    def enviar_confirmacao(
+        nome: str, email: str, tipo_cliente: str, total: float, endereco: str
+    ):
+        mensagem = f"Ola {nome}, seu pedido foi confirmado. "
+        if tipo_cliente == "VIP":
+            mensagem += "Obrigado por ser VIP! Frete gratis garantido. "
+        elif tipo_cliente == "FUNCIONARIO":
+            mensagem += "Desconto de colaborador aplicado. "
+        mensagem += f"Total: R$ {total:.2f}. Entrega em: {endereco}"
+
+        print(f"[EMAIL para {email}] {mensagem}")        
